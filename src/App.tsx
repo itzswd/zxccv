@@ -57,6 +57,7 @@ interface ComboText {
   count: number;
   time: number;
   opacity: number;
+  isCoin?: boolean;
 }
 
 interface Particle {
@@ -80,6 +81,24 @@ interface Splatter {
   shape: number[]; // Pre-calculated shape radii
 }
 
+interface BladeStyle {
+  id: string;
+  name: string;
+  price: number;
+  color: string;
+  glowColor: string;
+  glowIntensity: number; // 0-1
+  owned: boolean;
+}
+
+interface WoodScratch {
+  x: number;
+  y: number;
+  angle: number;
+  length: number;
+  opacity: number;
+}
+
 const DIFFICULTY_SETTINGS = {
   easy: { spawnRate: 1800, maxFruits: 3, bombChance: 0.05, speedMult: 0.8, fruitSize: 80 },
   medium: { spawnRate: 1200, maxFruits: 5, bombChance: 0.12, speedMult: 1.0, fruitSize: 70 },
@@ -94,6 +113,15 @@ const FRUIT_COLORS: Record<string, string> = {
   kiwi: '#7bed9f',
   pineapple: '#ffd93d',
 };
+
+const BLADE_STYLES: BladeStyle[] = [
+  { id: 'default', name: 'Обычное', price: 0, color: '#ffffff', glowColor: '#c8e6ff', glowIntensity: 0.3, owned: true },
+  { id: 'blue', name: 'Ледяное', price: 100, color: '#4fc3f7', glowColor: '#0288d1', glowIntensity: 0.6, owned: false },
+  { id: 'purple', name: 'Мистическое', price: 200, color: '#ba68c8', glowColor: '#7b1fa2', glowIntensity: 0.7, owned: false },
+  { id: 'red', name: 'Огненное', price: 300, color: '#ff5252', glowColor: '#d32f2f', glowIntensity: 0.8, owned: false },
+  { id: 'gold', name: 'Золотое', price: 500, color: '#ffd700', glowColor: '#ff8f00', glowIntensity: 0.9, owned: false },
+  { id: 'rainbow', name: 'Радужное', price: 1000, color: '#ff00ff', glowColor: '#00ffff', glowIntensity: 1.0, owned: false },
+];
 
 // Sound system using Web Audio API
 class SoundSystem {
@@ -213,6 +241,20 @@ function App() {
   const [lives, setLives] = useState(3);
   const [combo, setCombo] = useState(0);
   const [showCombo, setShowCombo] = useState(false);
+  const [coins, setCoins] = useState(() => {
+    const saved = localStorage.getItem('fruitNinjaCoins');
+    return saved ? parseInt(saved) : 0;
+  });
+  const [selectedBlade, setSelectedBlade] = useState(() => {
+    return localStorage.getItem('fruitNinjaBlade') || 'default';
+  });
+  const selectedBladeRef = useRef(selectedBlade);
+  useEffect(() => { selectedBladeRef.current = selectedBlade; }, [selectedBlade]);
+  const [ownedBlades, setOwnedBlades] = useState<string[]>(() => {
+    const saved = localStorage.getItem('fruitNinjaOwnedBlades');
+    return saved ? JSON.parse(saved) : ['default'];
+  });
+  const [showShop, setShowShop] = useState(false);
 
   const gameRef = useRef<{
     fruits: Fruit[];
@@ -221,6 +263,7 @@ function App() {
     comboTexts: ComboText[];
     particles: Particle[];
     splatters: Splatter[];
+    woodScratches: WoodScratch[];
     score: number;
     lives: number;
     combo: number;
@@ -248,6 +291,7 @@ function App() {
     comboTexts: [],
     particles: [],
     splatters: [],
+    woodScratches: [],
     score: 0,
     lives: 3,
     combo: 0,
@@ -360,6 +404,27 @@ function App() {
     loadImages();
   }, [loadImages]);
 
+  const buyBlade = useCallback((bladeId: string) => {
+    const blade = BLADE_STYLES.find(b => b.id === bladeId);
+    if (!blade || ownedBlades.includes(bladeId) || coins < blade.price) return;
+    
+    setCoins(prev => {
+      const newCoins = prev - blade.price;
+      localStorage.setItem('fruitNinjaCoins', newCoins.toString());
+      return newCoins;
+    });
+    
+    const newOwned = [...ownedBlades, bladeId];
+    setOwnedBlades(newOwned);
+    localStorage.setItem('fruitNinjaOwnedBlades', JSON.stringify(newOwned));
+  }, [coins, ownedBlades]);
+
+  const selectBlade = useCallback((bladeId: string) => {
+    if (!ownedBlades.includes(bladeId)) return;
+    setSelectedBlade(bladeId);
+    localStorage.setItem('fruitNinjaBlade', bladeId);
+  }, [ownedBlades]);
+
   const startGame = useCallback(() => {
     const game = gameRef.current;
     game.fruits = [];
@@ -368,6 +433,7 @@ function App() {
     game.comboTexts = [];
     game.particles = [];
     game.splatters = [];
+    game.woodScratches = [];
     game.score = 0;
     game.lives = 3;
     game.combo = 0;
@@ -472,6 +538,24 @@ function App() {
     setScore(game.score);
     setCombo(game.combo);
 
+    // Award coins
+    const coinsEarned = Math.ceil(points / 10);
+    setCoins(prev => {
+      const newCoins = prev + coinsEarned;
+      localStorage.setItem('fruitNinjaCoins', newCoins.toString());
+      return newCoins;
+    });
+
+    // Add coin popup text
+    game.comboTexts.push({
+      x: sliceX + 50,
+      y: sliceY,
+      count: coinsEarned,
+      time: 60,
+      opacity: 1,
+      isCoin: true,
+    });
+
     if (game.combo >= 3) {
       setShowCombo(true);
       soundSystem.playCombo();
@@ -542,6 +626,21 @@ function App() {
           shape,
         });
       }
+    }
+
+    // Add wood scratch marks on background
+    if (game.woodScratches.length < 30) {
+      const scratchAngle = Math.atan2(
+        game.mouseY - game.prevMouseY,
+        game.mouseX - game.prevMouseX
+      );
+      game.woodScratches.push({
+        x: fruit.x,
+        y: fruit.y,
+        angle: scratchAngle,
+        length: 40 + Math.random() * 30,
+        opacity: 0.15 + Math.random() * 0.1,
+      });
     }
   }, []);
 
@@ -640,6 +739,44 @@ function App() {
     game.splatters = game.splatters.filter(s => {
       s.opacity -= 0.0005;
       return s.opacity > 0;
+    });
+
+    // Draw wood scratches (permanent cut marks on background)
+    game.woodScratches.forEach((scratch) => {
+      ctx.save();
+      ctx.translate(scratch.x, scratch.y);
+      ctx.rotate(scratch.angle);
+      ctx.globalAlpha = scratch.opacity;
+      
+      // Draw main scratch (dark)
+      ctx.strokeStyle = '#0a0503';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-scratch.length / 2, 0);
+      ctx.lineTo(scratch.length / 2, 0);
+      ctx.stroke();
+      
+      // Draw highlight edge (lighter wood color)
+      ctx.strokeStyle = '#5c3a1e';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-scratch.length / 2 + 2, 2);
+      ctx.lineTo(scratch.length / 2 - 2, 2);
+      ctx.stroke();
+      
+      // Draw splinter details
+      ctx.strokeStyle = '#2d1b0e';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 3; i++) {
+        const offset = (i - 1) * (scratch.length / 4);
+        ctx.beginPath();
+        ctx.moveTo(offset, -2);
+        ctx.lineTo(offset + 3, -4);
+        ctx.stroke();
+      }
+      
+      ctx.restore();
     });
 
     // Spawn fruits
@@ -756,31 +893,45 @@ function App() {
       return p.life > 0;
     });
 
-    // Draw blade trail
+    // Draw blade trail with selected style
     if (game.isMouseDown && game.bladeTrail.length > 1) {
       const now = Date.now();
       game.bladeTrail = game.bladeTrail.filter((p) => now - p.time < 250);
 
       if (game.bladeTrail.length > 1) {
+        const bladeStyle = BLADE_STYLES.find(b => b.id === selectedBladeRef.current) || BLADE_STYLES[0];
+        
         ctx.save();
+        
+        // Rainbow effect - cycle colors
+        const hueShift = (now / 10) % 360;
+        
         // Outer glow
         for (let i = 1; i < game.bladeTrail.length; i++) {
           const p1 = game.bladeTrail[i - 1];
           const p2 = game.bladeTrail[i];
           const age = (now - p1.time) / 250;
-          const alpha = (1 - age) * 0.3;
+          const alpha = (1 - age) * bladeStyle.glowIntensity * 0.5;
           const width = (1 - age) * 16 + 4;
+
+          let glowColor = bladeStyle.glowColor;
+          if (bladeStyle.id === 'rainbow') {
+            const hue = (hueShift + i * 10) % 360;
+            glowColor = `hsl(${hue}, 100%, 50%)`;
+          }
 
           ctx.beginPath();
           ctx.moveTo(p1.x, p1.y);
           ctx.lineTo(p2.x, p2.y);
-          ctx.strokeStyle = `rgba(200, 230, 255, ${alpha})`;
+          ctx.strokeStyle = glowColor;
+          ctx.globalAlpha = alpha;
           ctx.lineWidth = width;
           ctx.lineCap = 'round';
           ctx.stroke();
         }
 
         // Inner bright line
+        ctx.globalAlpha = 1;
         for (let i = 1; i < game.bladeTrail.length; i++) {
           const p1 = game.bladeTrail[i - 1];
           const p2 = game.bladeTrail[i];
@@ -788,10 +939,17 @@ function App() {
           const alpha = (1 - age) * 0.9;
           const width = (1 - age) * 4 + 1;
 
+          let color = bladeStyle.color;
+          if (bladeStyle.id === 'rainbow') {
+            const hue = (hueShift + i * 10) % 360;
+            color = `hsl(${hue}, 100%, 70%)`;
+          }
+
           ctx.beginPath();
           ctx.moveTo(p1.x, p1.y);
           ctx.lineTo(p2.x, p2.y);
-          ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = alpha;
           ctx.lineWidth = width;
           ctx.lineCap = 'round';
           ctx.stroke();
@@ -800,35 +958,45 @@ function App() {
       }
     }
 
-    // Draw combo texts
+    // Draw combo texts and coin popups
     game.comboTexts = game.comboTexts.filter((ct) => {
       ct.time--;
       ct.y -= 1.2;
-      ct.opacity = ct.time / 80;
+      ct.opacity = ct.time / (ct.isCoin ? 60 : 80);
 
       if (ct.time <= 0) return false;
 
       ctx.save();
       ctx.globalAlpha = ct.opacity;
       
-      const scale = 1 + (1 - ct.time / 80) * 0.3;
+      const maxTime = ct.isCoin ? 60 : 80;
+      const scale = 1 + (1 - ct.time / maxTime) * 0.3;
       ctx.translate(ct.x, ct.y);
       ctx.scale(scale, scale);
       
-      ctx.font = 'bold 32px "Segoe UI", system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      
-      // Text shadow
-      ctx.shadowColor = '#ffa502';
-      ctx.shadowBlur = 15;
-      ctx.fillStyle = '#ffd93d';
-      ctx.fillText(`${ct.count}x`, 0, 0);
-      
-      ctx.shadowBlur = 0;
-      ctx.font = 'bold 18px "Segoe UI", system-ui, sans-serif';
-      ctx.fillStyle = '#f5e6d3';
-      ctx.fillText(`COMBO +${ct.count * 10}`, 0, 28);
+
+      if (ct.isCoin) {
+        // Coin popup
+        ctx.font = 'bold 24px "Segoe UI", system-ui, sans-serif';
+        ctx.shadowColor = '#ffa502';
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = '#ffd700';
+        ctx.fillText(`+${ct.count}`, 0, 0);
+      } else {
+        // Combo text
+        ctx.font = 'bold 32px "Segoe UI", system-ui, sans-serif';
+        ctx.shadowColor = '#ffa502';
+        ctx.shadowBlur = 15;
+        ctx.fillStyle = '#ffd93d';
+        ctx.fillText(`${ct.count}x`, 0, 0);
+        
+        ctx.shadowBlur = 0;
+        ctx.font = 'bold 18px "Segoe UI", system-ui, sans-serif';
+        ctx.fillStyle = '#f5e6d3';
+        ctx.fillText(`COMBO +${ct.count * 10}`, 0, 28);
+      }
       
       ctx.restore();
 
@@ -952,6 +1120,95 @@ function App() {
     };
   }, [gameState, checkSlice]);
 
+  // Shop Screen
+  if (showShop && gameState === 'menu') {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, #1a0f0a 0%, #2d1b0e 50%, #1a0f0a 100%)' }}>
+        <div className="absolute inset-0 opacity-20">
+          <div className="absolute top-10 left-10 w-40 h-40 rounded-full bg-amber-800 blur-3xl"></div>
+          <div className="absolute bottom-20 right-20 w-56 h-56 rounded-full bg-orange-900 blur-3xl"></div>
+        </div>
+
+        <div className="animate-fadeIn flex flex-col items-center z-10 w-full max-w-md px-4">
+          <h2 className="text-4xl md:text-5xl font-black mb-2"
+            style={{ color: '#d4a574', textShadow: '0 4px 20px rgba(212, 165, 116, 0.3)' }}>
+            МАГАЗИН
+          </h2>
+          
+          {/* Coins display */}
+          <div className="mb-6 px-6 py-2 rounded-xl"
+            style={{ background: 'rgba(255, 215, 0, 0.1)', border: '1px solid rgba(255, 215, 0, 0.3)' }}>
+            <p className="text-xl font-bold" style={{ color: '#ffd700' }}>
+              {coins} монет
+            </p>
+          </div>
+
+          {/* Blade styles grid */}
+          <div className="grid grid-cols-2 gap-3 w-full mb-6">
+            {BLADE_STYLES.map((blade) => {
+              const isOwned = ownedBlades.includes(blade.id);
+              const isSelected = selectedBlade === blade.id;
+              const canAfford = coins >= blade.price;
+
+              return (
+                <button
+                  key={blade.id}
+                  onClick={() => isOwned ? selectBlade(blade.id) : buyBlade(blade.id)}
+                  className="p-4 rounded-xl transition-all duration-300 hover:scale-[1.03] active:scale-[0.97]"
+                  style={{
+                    background: isSelected 
+                      ? 'linear-gradient(135deg, rgba(212, 165, 116, 0.3), rgba(212, 165, 116, 0.15))'
+                      : 'rgba(212, 165, 116, 0.08)',
+                    border: `2px solid ${isSelected ? '#d4a574' : 'rgba(212, 165, 116, 0.2)'}`,
+                  }}
+                >
+                  {/* Blade preview */}
+                  <div className="h-12 mb-2 flex items-center justify-center">
+                    <div 
+                      className="w-full h-2 rounded-full"
+                      style={{
+                        background: `linear-gradient(90deg, transparent, ${blade.color}, transparent)`,
+                        boxShadow: `0 0 ${blade.glowIntensity * 20}px ${blade.glowColor}`,
+                      }}
+                    />
+                  </div>
+                  
+                  <p className="text-sm font-semibold mb-1" style={{ color: '#f5e6d3' }}>
+                    {blade.name}
+                  </p>
+                  
+                  {isOwned ? (
+                    <p className="text-xs" style={{ color: isSelected ? '#d4a574' : '#7bed9f' }}>
+                      {isSelected ? 'Выбрано' : 'Выбрать'}
+                    </p>
+                  ) : (
+                    <p className="text-xs" style={{ color: canAfford ? '#ffd700' : '#ff6b6b' }}>
+                      {blade.price} монет
+                    </p>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Back button */}
+          <button
+            onClick={() => setShowShop(false)}
+            className="px-8 py-3 rounded-xl text-lg font-semibold transition-all duration-300 hover:scale-[1.03] active:scale-[0.97]"
+            style={{
+              background: 'rgba(212, 165, 116, 0.08)',
+              color: '#d4a574',
+              border: '1px solid rgba(212, 165, 116, 0.25)',
+            }}
+          >
+            Назад
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Menu Screen
   if (gameState === 'menu') {
     return (
@@ -981,6 +1238,27 @@ function App() {
             </h1>
             <div className="mt-3 h-0.5 w-48 mx-auto rounded-full" 
               style={{ background: 'linear-gradient(90deg, transparent, #d4a574, transparent)' }}></div>
+          </div>
+
+          {/* Coins and Shop */}
+          <div className="flex items-center gap-3 mb-6">
+            <div className="px-4 py-2 rounded-lg"
+              style={{ background: 'rgba(255, 215, 0, 0.1)', border: '1px solid rgba(255, 215, 0, 0.3)' }}>
+              <p className="text-lg font-bold" style={{ color: '#ffd700' }}>
+                {coins} монет
+              </p>
+            </div>
+            <button
+              onClick={() => setShowShop(true)}
+              className="px-4 py-2 rounded-lg transition-all duration-300 hover:scale-[1.03] active:scale-[0.97]"
+              style={{
+                background: 'rgba(212, 165, 116, 0.15)',
+                color: '#d4a574',
+                border: '1px solid rgba(212, 165, 116, 0.3)',
+              }}
+            >
+              Магазин
+            </button>
           </div>
 
           {/* Difficulty buttons */}
@@ -1108,11 +1386,15 @@ function App() {
       {/* HUD */}
       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10 pointer-events-none">
         {/* Score */}
-        <div className="animate-slideDown">
+        <div className="animate-slideDown flex flex-col gap-2">
           <div className="px-5 py-3 rounded-xl"
             style={{ background: 'rgba(26, 15, 10, 0.85)', border: '1px solid rgba(212, 165, 116, 0.15)', backdropFilter: 'blur(10px)' }}>
             <p className="text-xs font-medium uppercase tracking-wider" style={{ color: '#d4a574', opacity: 0.6 }}>Очки</p>
             <p className="text-3xl font-bold mt-0.5" style={{ color: '#f5e6d3' }}>{score}</p>
+          </div>
+          <div className="px-4 py-2 rounded-lg"
+            style={{ background: 'rgba(26, 15, 10, 0.85)', border: '1px solid rgba(255, 215, 0, 0.2)', backdropFilter: 'blur(10px)' }}>
+            <p className="text-sm font-bold" style={{ color: '#ffd700' }}>{coins}</p>
           </div>
         </div>
 
