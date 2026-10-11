@@ -638,8 +638,8 @@ function App() {
         x: fruit.x,
         y: fruit.y,
         angle: scratchAngle,
-        length: 40 + Math.random() * 30,
-        opacity: 0.15 + Math.random() * 0.1,
+        length: 60 + Math.random() * 40,
+        opacity: 0.4 + Math.random() * 0.2,
       });
     }
   }, []);
@@ -748,9 +748,18 @@ function App() {
       ctx.rotate(scratch.angle);
       ctx.globalAlpha = scratch.opacity;
       
+      // Draw shadow/glow around scratch for visibility
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-scratch.length / 2, 0);
+      ctx.lineTo(scratch.length / 2, 0);
+      ctx.stroke();
+      
       // Draw main scratch (dark)
-      ctx.strokeStyle = '#0a0503';
-      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 4;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(-scratch.length / 2, 0);
@@ -758,21 +767,21 @@ function App() {
       ctx.stroke();
       
       // Draw highlight edge (lighter wood color)
-      ctx.strokeStyle = '#5c3a1e';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#8b6f47';
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(-scratch.length / 2 + 2, 2);
-      ctx.lineTo(scratch.length / 2 - 2, 2);
+      ctx.moveTo(-scratch.length / 2 + 3, 3);
+      ctx.lineTo(scratch.length / 2 - 3, 3);
       ctx.stroke();
       
       // Draw splinter details
-      ctx.strokeStyle = '#2d1b0e';
-      ctx.lineWidth = 1;
-      for (let i = 0; i < 3; i++) {
-        const offset = (i - 1) * (scratch.length / 4);
+      ctx.strokeStyle = '#4a3520';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 4; i++) {
+        const offset = (i - 1.5) * (scratch.length / 5);
         ctx.beginPath();
-        ctx.moveTo(offset, -2);
-        ctx.lineTo(offset + 3, -4);
+        ctx.moveTo(offset, -1);
+        ctx.lineTo(offset + 4, -5);
         ctx.stroke();
       }
       
