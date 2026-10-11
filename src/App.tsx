@@ -865,6 +865,8 @@ function App() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const game = gameRef.current;
+
     const resize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
@@ -873,7 +875,6 @@ function App() {
     resize();
     window.addEventListener('resize', resize);
 
-    const game = gameRef.current;
     game.lastTime = performance.now();
     game.running = true;
     game.animFrame = requestAnimationFrame(gameLoop);
