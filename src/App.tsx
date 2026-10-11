@@ -748,41 +748,46 @@ function App() {
       ctx.rotate(scratch.angle);
       ctx.globalAlpha = scratch.opacity;
       
-      // Draw shadow/glow around scratch for visibility
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-      ctx.lineWidth = 6;
-      ctx.lineCap = 'butt';
-      ctx.beginPath();
-      ctx.moveTo(-scratch.length / 2, 0);
-      ctx.lineTo(scratch.length / 2, 0);
-      ctx.stroke();
+      const halfLen = scratch.length / 2;
       
-      // Draw main scratch (dark)
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 4;
-      ctx.lineCap = 'butt';
+      // Draw scratch as sharp triangle (needle-like)
+      ctx.fillStyle = '#000000';
       ctx.beginPath();
-      ctx.moveTo(-scratch.length / 2, 0);
-      ctx.lineTo(scratch.length / 2, 0);
-      ctx.stroke();
+      ctx.moveTo(-halfLen, 0); // Left point (sharp)
+      ctx.lineTo(0, -2); // Top middle
+      ctx.lineTo(halfLen, 0); // Right point (sharp)
+      ctx.lineTo(0, 2); // Bottom middle
+      ctx.closePath();
+      ctx.fill();
+      
+      // Draw shadow for depth
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.beginPath();
+      ctx.moveTo(-halfLen, 1);
+      ctx.lineTo(0, -1);
+      ctx.lineTo(halfLen, 1);
+      ctx.lineTo(0, 3);
+      ctx.closePath();
+      ctx.fill();
       
       // Draw highlight edge (lighter wood color)
       ctx.strokeStyle = '#8b6f47';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(-scratch.length / 2 + 3, 3);
-      ctx.lineTo(scratch.length / 2 - 3, 3);
+      ctx.moveTo(-halfLen + 5, 3);
+      ctx.lineTo(halfLen - 5, 3);
       ctx.stroke();
       
-      // Draw splinter details
-      ctx.strokeStyle = '#4a3520';
-      ctx.lineWidth = 1.5;
+      // Draw splinter details (sharp triangles)
+      ctx.fillStyle = '#4a3520';
       for (let i = 0; i < 4; i++) {
         const offset = (i - 1.5) * (scratch.length / 5);
         ctx.beginPath();
-        ctx.moveTo(offset, -1);
-        ctx.lineTo(offset + 4, -5);
-        ctx.stroke();
+        ctx.moveTo(offset, -2);
+        ctx.lineTo(offset + 2, -6);
+        ctx.lineTo(offset + 4, -2);
+        ctx.closePath();
+        ctx.fill();
       }
       
       ctx.restore();
