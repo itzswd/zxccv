@@ -638,7 +638,7 @@ function App() {
         x: fruit.x,
         y: fruit.y,
         angle: scratchAngle,
-        length: 60 + Math.random() * 40,
+        length: 30 + Math.random() * 120, // от 30 до 150
         opacity: 0.4 + Math.random() * 0.2,
       });
     }
@@ -751,7 +751,7 @@ function App() {
       // Draw shadow/glow around scratch for visibility
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
       ctx.lineWidth = 6;
-      ctx.lineCap = 'round';
+      ctx.lineCap = 'butt';
       ctx.beginPath();
       ctx.moveTo(-scratch.length / 2, 0);
       ctx.lineTo(scratch.length / 2, 0);
@@ -760,7 +760,7 @@ function App() {
       // Draw main scratch (dark)
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 4;
-      ctx.lineCap = 'round';
+      ctx.lineCap = 'butt';
       ctx.beginPath();
       ctx.moveTo(-scratch.length / 2, 0);
       ctx.lineTo(scratch.length / 2, 0);
