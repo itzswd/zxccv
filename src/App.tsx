@@ -406,7 +406,7 @@ function App() {
       x,
       y: canvasHeight + 50,
       vx,
-      vy: -(Math.random() * 6 + 13) * settings.speedMult,
+      vy: -(Math.random() * 6 + 18) * settings.speedMult,
       rotation: Math.random() * Math.PI * 2,
       rotationSpeed: (Math.random() - 0.5) * 0.15,
       type,
@@ -650,7 +650,7 @@ function App() {
     }
 
     // Update and draw fruits
-    const gravity = 0.38;
+    const gravity = 0.32;
 
     game.fruits = game.fruits.filter((fruit) => {
       fruit.x += fruit.vx;
