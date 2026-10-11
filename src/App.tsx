@@ -2,12 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 
 // Image URLs
 const IMAGES = {
-  watermelon: 'https://image.qwenlm.ai/generated-images/0bb508e6-de25-46b5-8173-516dab277127/_result.png',
-  apple: 'https://image.qwenlm.ai/generated-images/99aed7de-56aa-404a-8e81-03c6ba0884a0/_result.png',
-  orange: 'https://image.qwenlm.ai/generated-images/ffebab20-2307-4542-bfd3-bf3e7ab655cd/_result.png',
-  kiwi: 'https://image.qwenlm.ai/generated-images/251b0c72-afa3-4ecb-8792-98fb1b5975a7/_result.png',
-  pineapple: 'https://image.qwenlm.ai/generated-images/12794922-afb4-4a2a-83c6-660376c68ca3/_result.png',
-  bomb: 'https://image.qwenlm.ai/generated-images/325dab35-70f3-4251-9581-e523bca86db8/_result.png',
+  watermelon: 'https://image.qwenlm.ai/generated-images/271edfcb-82d5-4be9-9318-bba0128bd4c1/_result.png',
+  apple: 'https://image.qwenlm.ai/generated-images/c1ab120a-d946-41e3-b6a5-621f29f15648/_result.png',
+  orange: 'https://image.qwenlm.ai/generated-images/49cbb087-d0bb-4321-a0a7-fe860b5a0228/_result.png',
+  kiwi: 'https://image.qwenlm.ai/generated-images/0ef3e9fc-0a17-494b-8fac-8864240422d6/_result.png',
+  pineapple: 'https://image.qwenlm.ai/generated-images/2c827877-e673-4136-9438-c6061d6ceb4e/_result.png',
+  bomb: 'https://image.qwenlm.ai/generated-images/e0f31d45-f213-4892-a5ad-b02e905c6a67/_result.png',
   wood: 'https://image.qwenlm.ai/generated-images/bfe3e02b-bc34-4bdd-a887-45afe73a0d92/_result.png',
 };
 
@@ -77,6 +77,7 @@ interface Splatter {
   color: string;
   opacity: number;
   angle: number;
+  shape: number[]; // Pre-calculated shape radii
 }
 
 const DIFFICULTY_SETTINGS = {
@@ -234,6 +235,9 @@ function App() {
     lastTime: number;
     images: Record<string, HTMLImageElement>;
     bgImage: HTMLImageElement | null;
+    bgCache: HTMLCanvasElement | null;
+    bgCacheW: number;
+    bgCacheH: number;
     imagesLoaded: boolean;
     running: boolean;
     lastSwooshTime: number;
@@ -258,10 +262,62 @@ function App() {
     lastTime: 0,
     images: {},
     bgImage: null,
+    bgCache: null,
+    bgCacheW: 0,
+    bgCacheH: 0,
     imagesLoaded: false,
     running: false,
     lastSwooshTime: 0,
   });
+
+  const removeBackground = useCallback((img: HTMLImageElement): HTMLImageElement => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return img;
+
+      ctx.drawImage(img, 0, 0);
+      
+      let imageData: ImageData;
+      try {
+        imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      } catch {
+        // CORS tainted canvas - return original
+        return img;
+      }
+      
+      const data = imageData.data;
+      const threshold = 230; // White background threshold
+
+      // Remove white/near-white background
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        
+        // Check if pixel is white or near-white
+        if (r > threshold && g > threshold && b > threshold) {
+          data[i + 3] = 0; // Make transparent
+        }
+        // Handle light edges (semi-transparent)
+        else if (r > 200 && g > 200 && b > 200) {
+          const brightness = (r + g + b) / 3;
+          const alpha = Math.max(0, Math.min(255, (255 - brightness) * 3));
+          data[i + 3] = Math.min(data[i + 3], alpha);
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      
+      const newImg = new Image();
+      newImg.src = canvas.toDataURL();
+      return newImg;
+    } catch {
+      return img;
+    }
+  }, []);
 
   const loadImages = useCallback(() => {
     const game = gameRef.current;
@@ -272,9 +328,22 @@ function App() {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
-        loaded++;
-        if (loaded >= total) {
-          game.imagesLoaded = true;
+        if (key !== 'wood') {
+          // Remove white background from fruit images
+          const processedImg = removeBackground(img);
+          processedImg.onload = () => {
+            game.images[key] = processedImg;
+            loaded++;
+            if (loaded >= total) {
+              game.imagesLoaded = true;
+            }
+          };
+        } else {
+          game.bgImage = img;
+          loaded++;
+          if (loaded >= total) {
+            game.imagesLoaded = true;
+          }
         }
       };
       img.onerror = () => {
@@ -284,13 +353,8 @@ function App() {
         }
       };
       img.src = url;
-      if (key === 'wood') {
-        game.bgImage = img;
-      } else {
-        game.images[key] = img;
-      }
     });
-  }, []);
+  }, [removeBackground]);
 
   useEffect(() => {
     loadImages();
@@ -380,15 +444,19 @@ function App() {
         });
       }
       // Dark splatter
-      for (let i = 0; i < 5; i++) {
-        game.splatters.push({
-          x: fruit.x + (Math.random() - 0.5) * 100,
-          y: fruit.y + (Math.random() - 0.5) * 100,
-          size: Math.random() * 30 + 20,
-          color: 'rgba(30, 30, 30, 0.6)',
-          opacity: 0.6,
-          angle: Math.random() * Math.PI * 2,
-        });
+      if (game.splatters.length < 50) {
+        for (let i = 0; i < 5; i++) {
+          const shape = Array.from({ length: 8 }, () => 0.6 + Math.random() * 0.4);
+          game.splatters.push({
+            x: fruit.x + (Math.random() - 0.5) * 100,
+            y: fruit.y + (Math.random() - 0.5) * 100,
+            size: Math.random() * 30 + 20,
+            color: 'rgba(30, 30, 30, 0.6)',
+            opacity: 0.6,
+            angle: Math.random() * Math.PI * 2,
+            shape,
+          });
+        }
       }
       return;
     }
@@ -442,9 +510,10 @@ function App() {
       });
     }
 
-    // Juice particles
+    // Juice particles (limit to avoid performance issues)
     const color = FRUIT_COLORS[fruit.type] || '#ff6b6b';
-    for (let i = 0; i < 20; i++) {
+    const particleCount = Math.min(15, 200 - game.particles.length);
+    for (let i = 0; i < particleCount; i++) {
       const pAngle = Math.random() * Math.PI * 2;
       const speed = Math.random() * 6 + 2;
       game.particles.push({
@@ -459,16 +528,20 @@ function App() {
       });
     }
 
-    // Add splatter marks on background
-    for (let i = 0; i < 3; i++) {
-      game.splatters.push({
-        x: fruit.x + (Math.random() - 0.5) * 80,
-        y: fruit.y + (Math.random() - 0.5) * 80,
-        size: Math.random() * 25 + 10,
-        color: color,
-        opacity: 0.4 + Math.random() * 0.2,
-        angle: Math.random() * Math.PI * 2,
-      });
+    // Add splatter marks on background (limit to avoid performance issues)
+    if (game.splatters.length < 50) {
+      for (let i = 0; i < 3; i++) {
+        const shape = Array.from({ length: 8 }, () => 0.6 + Math.random() * 0.4);
+        game.splatters.push({
+          x: fruit.x + (Math.random() - 0.5) * 80,
+          y: fruit.y + (Math.random() - 0.5) * 80,
+          size: Math.random() * 25 + 10,
+          color: color,
+          opacity: 0.4 + Math.random() * 0.2,
+          angle: Math.random() * Math.PI * 2,
+          shape,
+        });
+      }
     }
   }, []);
 
@@ -517,10 +590,24 @@ function App() {
     // Clear and draw background
     ctx.clearRect(0, 0, w, h);
 
-    if (game.bgImage) {
-      ctx.drawImage(game.bgImage, 0, 0, w, h);
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-      ctx.fillRect(0, 0, w, h);
+    // Cache background for performance
+    if (game.bgImage && (!game.bgCache || game.bgCacheW !== w || game.bgCacheH !== h)) {
+      const cache = document.createElement('canvas');
+      cache.width = w;
+      cache.height = h;
+      const cacheCtx = cache.getContext('2d');
+      if (cacheCtx) {
+        cacheCtx.drawImage(game.bgImage, 0, 0, w, h);
+        cacheCtx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+        cacheCtx.fillRect(0, 0, w, h);
+      }
+      game.bgCache = cache;
+      game.bgCacheW = w;
+      game.bgCacheH = h;
+    }
+
+    if (game.bgCache) {
+      ctx.drawImage(game.bgCache, 0, 0);
     } else {
       const gradient = ctx.createLinearGradient(0, 0, 0, h);
       gradient.addColorStop(0, '#1a0f0a');
@@ -537,10 +624,10 @@ function App() {
       ctx.rotate(splatter.angle);
       ctx.fillStyle = splatter.color;
       ctx.beginPath();
-      // Irregular splatter shape
+      // Use pre-calculated shape
       for (let i = 0; i < 8; i++) {
         const a = (Math.PI * 2 * i) / 8;
-        const r = splatter.size * (0.6 + Math.random() * 0.4);
+        const r = splatter.size * splatter.shape[i];
         if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
         else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
       }
@@ -659,8 +746,11 @@ function App() {
       ctx.globalAlpha = alpha;
       ctx.fillStyle = p.color;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
-      ctx.fill();
+      const radius = Math.max(0, p.size * alpha);
+      if (radius > 0) {
+        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
 
       return p.life > 0;
@@ -778,6 +868,7 @@ function App() {
     const resize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
+      game.bgCache = null; // Reset background cache on resize
     };
     resize();
     window.addEventListener('resize', resize);
